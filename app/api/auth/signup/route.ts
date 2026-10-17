@@ -1,0 +1,6 @@
+import { enforceRateLimit, getClientIdentifier } from "../../../rate-limit";
+import {NextResponse} from 'next/server'; import {createUser,loginUser,logEvent} from '../../../lib-server';
+export const runtime='nodejs';
+export async function POST(req:Request){
+const rl=await enforceRateLimit(getClientIdentifier(req), 5);
+if(!rl.allowed)return NextResponse.json({error:"Too many requests. Please wait a moment."},{status:429,headers:{"Retry-After":String(Math.max(1,Math.ceil((rl.reset-Date.now())/1000)))}});try{const {email,password}=await req.json();if(typeof email!=='string'||typeof password!=='string'||password.length<8)return NextResponse.json({error:'Use a valid email and a password of at least 8 characters.'},{status:400});const user=createUser(email.trim().toLowerCase(),password);const session=loginUser(user.email,password)!;logEvent('signup',user.id);const r=NextResponse.json({user:session.user});r.cookies.set('eye_session',session.token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',maxAge:60*60*24*30,path:'/'});return r}catch(e:any){return NextResponse.json({error:e.message==='ACCOUNT_EXISTS'?'An account already exists.':'Could not create account.'},{status:e.message==='ACCOUNT_EXISTS'?409:500})}}
